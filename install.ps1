@@ -7,7 +7,7 @@ if ($SCOOP_GH_PROXY -notmatch '/$') { $SCOOP_GH_PROXY += "/" }
 $SCOOP_PATH = if ($env:SCOOP) { $env:SCOOP } else { "$env:USERPROFILE\scoop" }
 
 # --- Helper: Define the Wrapper Function Logic ---
-# 使用单引号 Here-String (@' ... '@) 确保内部逻辑原样存储，不被提前解析
+# Use single-quoted Here-String (@' ... '@) to ensure internal logic is stored as-is without early parsing
 $WrapperCodeBlock = @'
 function scoop {
     $INTERNAL_PROXY = if ($env:SCOOP_GH_PROXY) { $env:SCOOP_GH_PROXY } else { "https://gh-proxy.com/" }
@@ -102,39 +102,39 @@ function scoop {
 
 # --- Execution Steps ---
 
-# 1. 清理内存中可能存在的旧函数
+# 1. Clean up potential old functions in memory
 if (Test-Path function:scoop) { Remove-Item function:scoop }
 
-# 2. 安装核心
+# 2. Install Scoop Core
 Write-Host "`n>>> STEP 1: Installing Scoop Core..." -ForegroundColor Cyan
 $CoreInstallUrl = "${SCOOP_GH_PROXY}https://raw.githubusercontent.com/ScoopInstaller/Install/master/install.ps1"
 Write-Host "Downloading from: $CoreInstallUrl" -ForegroundColor Yellow
 $InstallScript = Invoke-RestMethod $CoreInstallUrl
 Invoke-Expression $InstallScript
 
-# 3. 刷新环境并立即加载包装器
+# 3. Refresh environment and load the wrapper immediately
 $env:PATH = "$SCOOP_PATH\current\bin;$SCOOP_PATH\shims;" + $env:PATH
 Invoke-Expression $WrapperCodeBlock
 
-# 4. 配置 Repo 代理
+# 4. Configure Repo Proxy
 Write-Host "`n>>> STEP 2: Configuring Scoop Core Repo Proxy..." -ForegroundColor Cyan
 $CoreRepoUrl = "${SCOOP_GH_PROXY}https://github.com/ScoopInstaller/Scoop.git"
 Write-Host "Setting scoop_repo to: $CoreRepoUrl" -ForegroundColor Yellow
 scoop config scoop_repo $CoreRepoUrl
 
-# 5. 安装 Essentials (7zip, git)
+# 5. Install Essentials (7zip, git)
 Write-Host "`n>>> STEP 3: Installing Essentials (7zip, git) with Proxy Wrapper..." -ForegroundColor Cyan
-# 这里的安装会触发 Wrapper 内部的 Write-Host 输出
+# This installation will trigger Write-Host output inside the Wrapper
 scoop install 7zip
 scoop install git
 
-# 6. 重置 Bucket (Git 现在可用)
+# 6. Reset Bucket (Git is now available)
 Write-Host "`n>>> STEP 4: Resetting Main Bucket with Git Proxy..." -ForegroundColor Cyan
 scoop bucket rm main 2>$null
-# 这里的 bucket add 会触发 Wrapper 内部的高亮 URL 输出
+# This bucket add will trigger highlighted URL output inside the Wrapper
 scoop bucket add main
 
-# 7. 持久化到 Profile
+# 7. Persist to Profile
 Write-Host "`n>>> STEP 5: Persisting Wrapper to PowerShell Profile..." -ForegroundColor Cyan
 $ProfileFolder = Split-Path -Parent $PROFILE
 if (-not (Test-Path $ProfileFolder)) { New-Item -Type Directory -Path $ProfileFolder -Force | Out-Null }

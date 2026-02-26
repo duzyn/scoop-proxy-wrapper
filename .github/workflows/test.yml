@@ -24,6 +24,6 @@ jobs:
           echo "Git was installed to $(scoop which git)"
           scoop install aria2
           scoop install pandoc
-	  scoop bucket add extras
-	  scoop install everything
+          scoop bucket add extras
+          scoop install everything
           scoop bucket list
