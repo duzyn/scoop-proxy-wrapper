@@ -1,0 +1,146 @@
+# Disable progress bar
+$global:ProgressPreference = 'SilentlyContinue'
+
+# --- Configuration ---
+$SCOOP_GH_PROXY = if ($env:SCOOP_GH_PROXY) { $env:SCOOP_GH_PROXY } else { "https://gh-proxy.com/" }
+if ($SCOOP_GH_PROXY -notmatch '/$') { $SCOOP_GH_PROXY += "/" }
+$SCOOP_PATH = if ($env:SCOOP) { $env:SCOOP } else { "$env:USERPROFILE\scoop" }
+
+# --- Helper: Define the Wrapper Function Logic ---
+# 使用单引号 Here-String (@' ... '@) 确保内部逻辑原样存储，不被提前解析
+$WrapperCodeBlock = @'
+function scoop {
+    $INTERNAL_PROXY = if ($env:SCOOP_GH_PROXY) { $env:SCOOP_GH_PROXY } else { "https://gh-proxy.com/" }
+    if ($INTERNAL_PROXY -notmatch '/$') { $INTERNAL_PROXY += "/" }
+
+    # Explicitly locate the real scoop.ps1
+    $realScoop = "$env:USERPROFILE\scoop\apps\scoop\current\bin\scoop.ps1"
+    if (-not (Test-Path $realScoop)) {
+        $realScoop = (Get-Command -CommandType ExternalScript -Name scoop -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    }
+    
+    if (-not $realScoop) {
+        Write-Error "Cannot locate real scoop.ps1. Please ensure Scoop is installed."
+        return
+    }
+
+    $subCommand = $args[0]
+    $modifiedArgs = @($args)
+
+    # Logic 1: Intercept 'bucket add'
+    if ($subCommand -eq 'bucket' -and $args[1] -eq 'add') {
+        $bucketName = $args[2]
+        $bucketUrl = if ($args.Count -gt 3) { $args[3] } else { $null }
+
+        $knownBuckets = @{
+            'main'          = 'https://github.com/ScoopInstaller/Main.git'
+            'extras'        = 'https://github.com/ScoopInstaller/Extras.git'
+            'versions'      = 'https://github.com/ScoopInstaller/Versions.git'
+            'nirsoft'       = 'https://github.com/k6-0/nirsoft.git'
+            'php'           = 'https://github.com/ScoopInstaller/PHP.git'
+            'nerd-fonts'    = 'https://github.com/matthewjberger/scoop-nerd-fonts.git'
+            'nonportable'   = 'https://github.com/ScoopInstaller/Nonportable.git'
+            'java'          = 'https://github.com/ScoopInstaller/Java.git'
+            'games'         = 'https://github.com/ScoopInstaller/Games.git'
+            'sysinternals'  = 'https://github.com/niheaven/sysinternals.git'
+        }
+
+        if (-not $bucketUrl -and $knownBuckets.ContainsKey($bucketName)) {
+            $bucketUrl = $knownBuckets[$bucketName]
+        }
+
+        if ($bucketUrl -and $bucketUrl -match 'https://github.com/') {
+            if ($bucketUrl -notmatch '\.git$') { $bucketUrl += '.git' }
+            $proxiedBucketUrl = "${INTERNAL_PROXY}${bucketUrl}"
+            Write-Host ">>> Proxying Bucket Git URL: $proxiedBucketUrl" -ForegroundColor Yellow
+            & powershell -File $realScoop bucket add $bucketName "$proxiedBucketUrl"
+            return
+        }
+    }
+
+    # Logic 2: Intercept 'install/update'
+    $interceptDownload = @('install', 'update', 'download')
+    if ($interceptDownload -contains $subCommand) {
+        $modifiedManifests = @()
+        $apps = @($args | Where-Object { $_.Trim() -and $_.Substring(0,1) -ne '-' }) | Select-Object -Skip 1
+        
+        if ($apps.Count -gt 0) {
+            try {
+                foreach ($app in $apps) {
+                    $info = & powershell -File $realScoop info $app 2>$null | Out-String
+                    if ($info -match "(?m)^Manifest:\s*(.+)$") {
+                        $path = $matches[1].Trim()
+                        if (Test-Path $path) {
+                            $content = [System.IO.File]::ReadAllText($path)
+                            $escapedProxy = [regex]::Escape($INTERNAL_PROXY)
+                            $pattern = "(?<!$escapedProxy)(https://github\.com/[^/]+/[^/]+/(?:releases/(?:latest/)?download|archive)/)"
+                            
+                            if ($content -match $pattern -or $content -match 'https?://www\.7-zip\.org/a/7z') {
+                                Write-Host ">>> Injecting Proxy [$INTERNAL_PROXY] for '$app' manifests..." -ForegroundColor Cyan
+                                $newContent = $content -replace $pattern, "${INTERNAL_PROXY}$1"
+                                $newContent = $newContent -replace 'https?://www\.7-zip\.org/a/7z(\d{2})(\d{2})', "${INTERNAL_PROXY}https://github.com/ip7z/7zip/releases/download/$1.$2/7z$1$2"
+                                [System.IO.File]::WriteAllText($path, $newContent, (New-Object System.Text.UTF8Encoding $false))
+                                $modifiedManifests += @{ Path = $path; Content = $content }
+                            }
+                        }
+                    }
+                }
+                & powershell -File $realScoop @modifiedArgs
+            } finally {
+                foreach ($m in $modifiedManifests) {
+                    [System.IO.File]::WriteAllText($m.Path, $m.Content, (New-Object System.Text.UTF8Encoding $false))
+                }
+            }
+            return
+        }
+    }
+
+    # Default Pass-through
+    & powershell -File $realScoop @modifiedArgs
+}
+'@
+
+# --- Execution Steps ---
+
+# 1. 清理内存中可能存在的旧函数
+if (Test-Path function:scoop) { Remove-Item function:scoop }
+
+# 2. 安装核心
+Write-Host "`n>>> STEP 1: Installing Scoop Core..." -ForegroundColor Cyan
+$CoreInstallUrl = "${SCOOP_GH_PROXY}https://raw.githubusercontent.com/ScoopInstaller/Install/master/install.ps1"
+Write-Host "Downloading from: $CoreInstallUrl" -ForegroundColor Yellow
+$InstallScript = Invoke-RestMethod $CoreInstallUrl
+Invoke-Expression $InstallScript
+
+# 3. 刷新环境并立即加载包装器
+$env:PATH = "$SCOOP_PATH\current\bin;$SCOOP_PATH\shims;" + $env:PATH
+Invoke-Expression $WrapperCodeBlock
+
+# 4. 配置 Repo 代理
+Write-Host "`n>>> STEP 2: Configuring Scoop Core Repo Proxy..." -ForegroundColor Cyan
+$CoreRepoUrl = "${SCOOP_GH_PROXY}https://github.com/ScoopInstaller/Scoop.git"
+Write-Host "Setting scoop_repo to: $CoreRepoUrl" -ForegroundColor Yellow
+scoop config scoop_repo $CoreRepoUrl
+
+# 5. 安装 Essentials (7zip, git)
+Write-Host "`n>>> STEP 3: Installing Essentials (7zip, git) with Proxy Wrapper..." -ForegroundColor Cyan
+# 这里的安装会触发 Wrapper 内部的 Write-Host 输出
+scoop install 7zip
+scoop install git
+
+# 6. 重置 Bucket (Git 现在可用)
+Write-Host "`n>>> STEP 4: Resetting Main Bucket with Git Proxy..." -ForegroundColor Cyan
+scoop bucket rm main 2>$null
+# 这里的 bucket add 会触发 Wrapper 内部的高亮 URL 输出
+scoop bucket add main
+
+# 7. 持久化到 Profile
+Write-Host "`n>>> STEP 5: Persisting Wrapper to PowerShell Profile..." -ForegroundColor Cyan
+$ProfileFolder = Split-Path -Parent $PROFILE
+if (-not (Test-Path $ProfileFolder)) { New-Item -Type Directory -Path $ProfileFolder -Force | Out-Null }
+$FullWrapper = "`n# --- Scoop Proxy Wrapper Start ---`n$WrapperCodeBlock`n# --- Scoop Proxy Wrapper End ---"
+Set-Content -Path $PROFILE -Value $FullWrapper -Encoding UTF8
+
+Write-Host "`n[SUCCESS] Scoop is fully installed and accelerated!" -ForegroundColor Green
+Write-Host "Verify: Check '$PROFILE' to see the injected code." -ForegroundColor Gray
+Write-Host "Restart PowerShell or run: . `$PROFILE`n" -ForegroundColor Yellow
