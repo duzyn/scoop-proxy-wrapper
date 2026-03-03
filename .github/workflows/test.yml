@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - 'install.ps1'
+  pull_request:
+    paths:
+      - 'install.ps1'
 
 jobs:
   test:
@@ -15,15 +18,160 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Test
+      - name: Show environment info
         shell: pwsh
         run: |
+          Write-Host "=== Environment Info ===" -ForegroundColor Cyan
+          Write-Host "User: $env:USERNAME"
+          Write-Host "UserProfile: $env:USERPROFILE"
+          Write-Host "PSVersionTable: $($PSVersionTable.PSVersion)"
+          Write-Host "Current proxy env vars:"
+          Get-ChildItem Env: | Where-Object { $_.Name -match 'PROXY|HTTP' } | Format-Table -AutoSize
+
+      - name: Check existing Scoop status
+        shell: pwsh
+        run: |
+          Write-Host "=== Pre-check: Existing Scoop Status ===" -ForegroundColor Cyan
+          $scoopCmd = Get-Command scoop -ErrorAction SilentlyContinue
+          if ($scoopCmd) {
+            Write-Host "Scoop command found: $($scoopCmd.Source)" -ForegroundColor Yellow
+            scoop which scoop
+          } else {
+            Write-Host "Scoop command NOT found (expected for fresh install)" -ForegroundColor Green
+          }
+          Write-Host "SCOOP environment variable: $env:SCOOP"
+
+      - name: Run install.ps1
+        shell: pwsh
+        run: |
+          Write-Host "=== Running install.ps1 ===" -ForegroundColor Cyan
           .\install.ps1
-          echo "Scoop repo has been set to $(scoop config scoop_repo)"
-          echo "7-Zip was installed to $(scoop which 7z)"
-          echo "Git was installed to $(scoop which git)"
-          scoop install aria2
-          scoop install pandoc
-          scoop bucket add extras
-          scoop install everything
+
+      - name: Verify Scoop installation
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 1: Scoop Core ===" -ForegroundColor Cyan
+          Write-Host "Scoop command: $(Get-Command scoop -ErrorAction SilentlyContinue)"
+          $scoopPath = scoop prefix
+          Write-Host "Scoop prefix: $scoopPath"
+          Write-Host "Scoop version: $(scoop version)"
+
+      - name: Verify proxy environment variable
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 2: Environment Variable ===" -ForegroundColor Cyan
+          $proxyVal = [Environment]::GetEnvironmentVariable("SCOOP_GH_PROXY", "User")
+          Write-Host "SCOOP_GH_PROXY (User scope): $proxyVal"
+          Write-Host "SCOOP_GH_PROXY (Process scope): $env:SCOOP_GH_PROXY"
+
+      - name: Verify download.ps1 patch
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 3: lib/download.ps1 Patch ===" -ForegroundColor Cyan
+          $scoopPath = scoop prefix
+          $downloadLib = "$scoopPath\lib\download.ps1"
+          if (Test-Path $downloadLib) {
+            $content = Get-Content $downloadLib -Raw
+            if ($content -match 'SCOOP_GH_PROXY') {
+              Write-Host "PATCH FOUND: download.ps1 contains proxy logic" -ForegroundColor Green
+              $content -match 'github\.com/.*/releases/download/' | Out-Null
+              Write-Host "Pattern matched: github.com releases download"
+            } else {
+              Write-Host "PATCH MISSING: download.ps1 does NOT contain proxy logic" -ForegroundColor Red
+            }
+          } else {
+            Write-Host "ERROR: download.ps1 not found at $downloadLib" -ForegroundColor Red
+          }
+
+      - name: Verify scoop.ps1 self-healing patch
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 4: bin/scoop.ps1 Self-Healing Patch ===" -ForegroundColor Cyan
+          $scoopPath = scoop prefix
+          $scoopBin = "$scoopPath\bin\scoop.ps1"
+          if (Test-Path $scoopBin) {
+            $content = Get-Content $scoopBin -Raw
+            if ($content -match 'SCOOP_GH_PROXY SELF-HEALING') {
+              Write-Host "PATCH FOUND: scoop.ps1 contains self-healing logic" -ForegroundColor Green
+            } else {
+              Write-Host "PATCH MISSING: scoop.ps1 does NOT contain self-healing logic" -ForegroundColor Red
+            }
+          } else {
+            Write-Host "ERROR: scoop.ps1 not found at $scoopBin" -ForegroundColor Red
+          }
+
+      - name: Verify PowerShell profile wrapper
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 5: PowerShell Profile Wrapper ===" -ForegroundColor Cyan
+          $profilePath = $PROFILE
+          Write-Host "Profile path: $profilePath"
+          if (Test-Path $profilePath) {
+            $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+            if ($profileContent -match 'Scoop Proxy Wrapper') {
+              Write-Host "WRAPPER FOUND: Profile contains Scoop Proxy Wrapper" -ForegroundColor Green
+              Write-Host "Wrapper function definition:"
+              $profileContent -match '(?s)function scoop \{.*?\}' | ForEach-Object { Write-Host $Matches[0] }
+            } else {
+              Write-Host "WRAPPER MISSING: Profile does NOT contain wrapper" -ForegroundColor Red
+            }
+          } else {
+            Write-Host "WARNING: Profile file does not exist yet" -ForegroundColor Yellow
+          }
+
+      - name: Verify scoop config
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 6: Scoop Config ===" -ForegroundColor Cyan
+          $repo = scoop config scoop_repo
+          Write-Host "scoop_repo: $repo"
+          if ($repo -match 'gh-proxy|proxy') {
+            Write-Host "REPO PROXIED: Using proxy for main bucket" -ForegroundColor Green
+          }
+
+      - name: Test bucket add with proxy
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 7: Bucket Add Test ===" -ForegroundColor Cyan
           scoop bucket list
+          scoop bucket add extras 2>&1
+          Write-Host "Extras bucket added (or already exists)"
+
+      - name: Test app install with proxy (7zip)
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 8: App Install Test (7zip) ===" -ForegroundColor Cyan
+          scoop status
+          scoop install 7zip 2>&1
+          if (scoop which 7z) {
+            Write-Host "7zip installed successfully: $(scoop which 7z)" -ForegroundColor Green
+          }
+
+      - name: Test app install with proxy (git)
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 9: App Install Test (git) ===" -ForegroundColor Cyan
+          scoop install git 2>&1
+          if (scoop which git) {
+            Write-Host "Git installed successfully: $(scoop which git)" -ForegroundColor Green
+          }
+
+      - name: Test aria2 installation (proxy for large downloads)
+        shell: pwsh
+        run: |
+          Write-Host "=== Verification 10: Aria2 Install Test ===" -ForegroundColor Cyan
+          scoop install aria2 2>&1
+          if (scoop which aria2) {
+            Write-Host "Aria2 installed successfully: $(scoop which aria2)" -ForegroundColor Green
+          }
+
+      - name: Final status summary
+        shell: pwsh
+        run: |
+          Write-Host "`n=== Final Status Summary ===" -ForegroundColor Cyan
+          Write-Host "Scoop path: $(scoop prefix)"
+          Write-Host "Scoop version: $(scoop version)"
+          Write-Host "SCOOP_GH_PROXY: $env:SCOOP_GH_PROXY"
+          Write-Host "Buckets: $(scoop bucket list)"
+          Write-Host "Installed apps:"
+          scoop list | Select-Object -First 15
