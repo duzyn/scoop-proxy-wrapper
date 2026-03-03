@@ -57,6 +57,7 @@ if (-not $status) {
     git add install.ps1
     git add CLAUDE.md
     git add auto-test.ps1
+    git add .github/workflows/test.yml
 
     # Commit
     git commit -m $CommitMessage
