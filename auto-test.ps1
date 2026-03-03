@@ -3,14 +3,18 @@
 
 param(
     [string]$CommitMessage = "Auto test: update install.ps1",
-    [int]$MaxRetries = 3,
-    [int]$WaitSeconds = 60
+    [int]$MaxRetries = 5,
+    [int]$WaitSeconds = 30
 )
 
 $ErrorActionPreference = "Stop"
 
+# Add gh to PATH
+$env:PATH = "C:\Users\WPS\scoop\shims;$env:PATH"
+$GhExePath = "C:\Users\WPS\scoop\shims\gh.exe"
+
 # --- Configuration ---
-$RepoOwner = "WPS"
+$RepoOwner = "duzyn"
 $RepoName = "scoop-proxy-wrapper"
 $WorkflowFile = "test.yml"
 $Branch = "main"
@@ -21,10 +25,20 @@ function Write-Success { param($msg) Write-Host $msg -ForegroundColor Green }
 function Write-Error { param($msg) Write-Host $msg -ForegroundColor Red }
 function Write-Warning { param($msg) Write-Host $msg -ForegroundColor Yellow }
 
+# --- Helper function to run gh ---
+function Invoke-GhApi {
+    param([string]$Endpoint, [string]$jqFilter = $null)
+    $cmd = "$GhExePath api $Endpoint"
+    if ($jqFilter) {
+        $cmd += " --jq '$jqFilter'"
+    }
+    Invoke-Expression $cmd
+}
+
 # --- Step 1: Check gh auth ---
 Write-Status "=== Step 1: Checking GitHub CLI authentication ==="
 
-$authStatus = gh auth status 2>&1
+$authStatus = & $GhExePath auth status 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Not logged in to GitHub. Please run: gh auth login"
     exit 1
@@ -42,6 +56,7 @@ if (-not $status) {
     # Add all changes
     git add install.ps1
     git add CLAUDE.md
+    git add auto-test.ps1
 
     # Commit
     git commit -m $CommitMessage
@@ -59,9 +74,6 @@ Write-Status "=== Step 3: Triggering workflow run ==="
 $commitSha = git rev-parse HEAD
 Write-Status "Commit SHA: $commitSha"
 
-# Trigger workflow dispatch (if needed) or just wait for push-triggered run
-# Since workflow triggers on push, we just need to wait for it to start
-
 Write-Status "Waiting for workflow to start..."
 Start-Sleep -Seconds 5
 
@@ -70,10 +82,14 @@ $retryCount = 0
 $runId = $null
 
 while ($retryCount -lt $MaxRetries -and -not $runId) {
-    $runs = gh api repos/$RepoOwner/$RepoName/actions/runs --jq ".workflow_runs[] | select(.head_sha == `"$commitSha`") | .id" 2>$null
-    if ($runs) {
-        $runId = ($runs | Select-Object -First 1)
+    # Get all runs and filter in PowerShell
+    $runsJson = & $GhExePath api "repos/$RepoOwner/$RepoName/actions/runs" 2>$null | ConvertFrom-Json
+    $matchingRun = $runsJson.workflow_runs | Where-Object { $_.head_sha -eq $commitSha } | Select-Object -First 1
+
+    if ($matchingRun) {
+        $runId = $matchingRun.id
     }
+
     if (-not $runId) {
         $retryCount++
         Write-Status "Waiting for workflow to appear... (attempt $retryCount/$MaxRetries)"
@@ -95,9 +111,9 @@ $completed = $false
 $success = $false
 
 while (-not $completed) {
-    $run = gh api repos/$RepoOwner/$RepoName/actions/runs/$runId --jq ".conclusion, .status"
-    $status = $run[0]
-    $conclusion = $run[1]
+    $runInfo = & $GhExePath api "repos/$RepoOwner/$RepoName/actions/runs/$runId" --jq '.status, .conclusion'
+    $status = $runInfo[0]
+    $conclusion = $runInfo[1]
 
     if ($status -eq "completed") {
         $completed = $true
@@ -120,14 +136,14 @@ if ($success) {
 # --- Step 5: Get and parse workflow output ---
 Write-Status "=== Step 5: Getting workflow output ==="
 
-# Get all job outputs
-$jobs = gh api repos/$RepoOwner/$RepoName/actions/runs/$runId/jobs --jq ".jobs[] | {name: .name, conclusion: .conclusion, steps: [.steps[] | {name: .name, conclusion: .conclusion, output: .output.text}]}"
+# Get jobs
+$jobsJson = & $GhExePath api "repos/$RepoOwner/$RepoName/actions/runs/$runId/jobs" | ConvertFrom-Json
 
 # Print summary
 Write-Host "`n=== Workflow Summary ===" -ForegroundColor Cyan
 
 $failedSteps = @()
-foreach ($job in $jobs) {
+foreach ($job in $jobsJson.jobs) {
     Write-Host "`nJob: $($job.name) - $($job.conclusion)" -ForegroundColor $(if ($job.conclusion -eq "success") { "Green" } else { "Red" })
 
     foreach ($step in $job.steps) {
@@ -148,17 +164,17 @@ if ($failedSteps.Count -gt 0) {
 # --- Step 6: Verify target achieved ---
 Write-Status "=== Step 6: Verifying target achievements ==="
 
-# Check key verification points
-$verifications = @()
-
-# Get job output for key verifications
-$verificationOutput = gh api repos/$RepoOwner/$RepoName/actions/runs/$runId/jobs --jq '.jobs[] | select(.name == "test") | .steps[] | select(.name | test("Verification")) | {name: .name, conclusion: .conclusion}'
-
 $allPassed = $true
-foreach ($v in $verificationOutput) {
-    Write-Host "$($v.name): $($v.conclusion)" -ForegroundColor $(if ($v.conclusion -eq "success") { "Green" } else { "Red" })
-    if ($v.conclusion -ne "success") {
-        $allPassed = $false
+foreach ($job in $jobsJson.jobs) {
+    if ($job.name -eq "test") {
+        foreach ($step in $job.steps) {
+            if ($step.name -match "Verification") {
+                Write-Host "$($step.name): $($step.conclusion)" -ForegroundColor $(if ($step.conclusion -eq "success") { "Green" } else { "Red" })
+                if ($step.conclusion -ne "success") {
+                    $allPassed = $false
+                }
+            }
+        }
     }
 }
 
@@ -183,7 +199,7 @@ $newStatus = @"
 ## Last Auto-Test Result
 
 - **Date**: $date
-- **Status**: ✅ PASSED
+- **Status**: PASSED
 - **Workflow Run**: https://github.com/$RepoOwner/$RepoName/actions/runs/$runId
 - **Commit**: $commitSha
 "@
