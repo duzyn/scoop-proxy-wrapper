@@ -4,11 +4,11 @@ on:
   push:
     paths:
       - 'install.ps1'
-      - 'auto-test.ps1'
+      - 'profile.ps1'
   pull_request:
     paths:
       - 'install.ps1'
-      - 'auto-test.ps1'
+      - 'profile.ps1'
 
 jobs:
   test:
