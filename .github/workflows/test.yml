@@ -2,13 +2,7 @@ name: Test
 
 on:
   push:
-    paths:
-      - 'install.ps1'
-      - 'profile.ps1'
   pull_request:
-    paths:
-      - 'install.ps1'
-      - 'profile.ps1'
   workflow_dispatch:
 
 jobs:
