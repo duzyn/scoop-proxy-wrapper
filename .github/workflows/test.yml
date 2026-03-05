@@ -20,30 +20,37 @@ jobs:
 
       - name: Run install.ps1
         shell: pwsh
-        run: .\install.ps1
+        run: |
+          Write-Host "=== Pre-check: Scoop status ===" -ForegroundColor Yellow
+          Get-Command scoop -ErrorAction SilentlyContinue | Format-List
+          Write-Host "SCOOP env: $env:SCOOP"
+          
+          Write-Host "`n=== Running install.ps1 ===" -ForegroundColor Cyan
+          .\install.ps1 2>&1
+          
+          Write-Host "`n=== Post-install: Scoop status ===" -ForegroundColor Yellow
+          Get-Command scoop -ErrorAction SilentlyContinue | Format-List
+          Write-Host "SCOOP_GH_PROXY: $env:SCOOP_GH_PROXY"
+          $env:Path -split ';' | Where-Object { $_ -match 'scoop' } | ForEach-Object { Write-Host "Scoop in PATH: $_" }
 
       - name: Verify installation
         shell: pwsh
         run: |
+          $scoopCmd = Get-Command scoop -ErrorAction SilentlyContinue
+          if (-not $scoopCmd) {
+            Write-Host "[ERROR] Scoop command not found!" -ForegroundColor Red
+            Write-Host "Checking Scoop environment variable: $env:SCOOP"
+            Write-Host "Checking if scoop installed somewhere..."
+            Get-ChildItem "$env:USERPROFILE\scoop" -ErrorAction SilentlyContinue | Format-Table Name
+            exit 1
+          }
+          
           $scoopPath = scoop prefix
           
           Write-Host "=== Scoop Status ===" -ForegroundColor Cyan
           Write-Host "Path: $scoopPath"
           Write-Host "Version: $(scoop version)"
           Write-Host "SCOOP_GH_PROXY: $env:SCOOP_GH_PROXY"
-          
-          Write-Host "`n=== Patches ===" -ForegroundColor Cyan
-          "$scoopPath\lib\download.ps1", "$scoopPath\bin\scoop.ps1" | ForEach-Object {
-            if (Test-Path $_) {
-              $content = Get-Content $_ -Raw
-              $name = Split-Path $_ -Leaf
-              if ($content -match 'SCOOP_GH_PROXY') {
-                Write-Host "[OK] $name patched" -ForegroundColor Green
-              } else {
-                Write-Host "[FAIL] $name not patched" -ForegroundColor Red
-              }
-            }
-          }
           
           Write-Host "`n=== Buckets ===" -ForegroundColor Cyan
           scoop bucket list
