@@ -46,8 +46,8 @@ Describe 'install.ps1 tests' {
         }
 
         It 'Should construct correct profile download URL' {
-            $profileUrl = "$env:SCOOP_GH_PROXY/https://raw.githubusercontent.com/duzyn/scoop-proxy-wrapper/master/profile.ps1"
-            $profileUrl | Should Be 'https://gh-proxy.com/https://raw.githubusercontent.com/duzyn/scoop-proxy-wrapper/master/profile.ps1'
+            $profileUrl = "$env:SCOOP_GH_PROXY/https://raw.githubusercontent.com/duzyn/scoop-proxy-wrapper/main/profile.ps1"
+            $profileUrl | Should Be 'https://gh-proxy.com/https://raw.githubusercontent.com/duzyn/scoop-proxy-wrapper/main/profile.ps1'
         }
 
         It 'Should fallback to local profile.ps1 when download fails' {
@@ -109,7 +109,7 @@ Other content
         It 'Should transform matched 7-Zip URL correctly' {
             $str = 'https://www.7-zip.org/a/7z2408'
             $env:SCOOP_GH_PROXY = 'https://gh-proxy.com'
-            $result = $str -replace 'https?://www\.7-zip\.org/a/7z(\d{2})(\d{2})', "$env:SCOOP_GH_PROXY/https://github.com/ip7z/7zip/releases/download/$1.$2/7z$1$2"
+            $result = $str -replace 'https?://www\.7-zip\.org/a/7z(\d{2})(\d{2})', ($env:SCOOP_GH_PROXY + '/https://github.com/ip7z/7zip/releases/download/$1.$2/7z$1$2')
             $result | Should Match 'gh-proxy\.com'
         }
     }
@@ -123,7 +123,7 @@ Other content
         It 'Should transform matched GitHub URL with proxy prefix' {
             $str = 'https://github.com/user/repo/releases/download/v1.0/file.exe'
             $env:SCOOP_GH_PROXY = 'https://gh-proxy.com'
-            $result = $str -replace '(https?://github\.com/.+/releases/.*download)', "$env:SCOOP_GH_PROXY/$1"
+            $result = $str -replace '(https?://github\.com/.+/releases/.*download)', ($env:SCOOP_GH_PROXY + '/$1')
             $result | Should Match 'gh-proxy\.com'
         }
     }
