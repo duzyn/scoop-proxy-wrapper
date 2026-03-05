@@ -97,3 +97,44 @@ jobs:
               Write-Host "[WARN] $app not found" -ForegroundColor Yellow
             }
           }
+
+      - name: Test bucket add extras
+        shell: pwsh
+        run: |
+          # Set Scoop environment
+          $scoopPath = "$env:USERPROFILE\scoop"
+          $scoopShims = "$scoopPath\shims"
+          if (Test-Path $scoopShims) {
+            $env:Path = "$scoopShims;$env:Path"
+          }
+          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
+          
+          Write-Host "Testing scoop bucket add extras..." -ForegroundColor Cyan
+          scoop bucket add extras 2>&1
+          
+          $buckets = scoop bucket list
+          if ($buckets -match 'extras') {
+            Write-Host "[OK] extras bucket added" -ForegroundColor Green
+          } else {
+            Write-Host "[WARN] extras bucket not found" -ForegroundColor Yellow
+          }
+
+      - name: Test app download (sharex)
+        shell: pwsh
+        run: |
+          # Set Scoop environment
+          $scoopPath = "$env:USERPROFILE\scoop"
+          $scoopShims = "$scoopPath\shims"
+          if (Test-Path $scoopShims) {
+            $env:Path = "$scoopShims;$env:Path"
+          }
+          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
+          
+          Write-Host "Testing scoop download sharex..." -ForegroundColor Cyan
+          scoop download sharex 2>&1
+          
+          if (Test-Path "$scoopPath\sharex\*") {
+            Write-Host "[OK] sharex downloaded successfully" -ForegroundColor Green
+          } else {
+            Write-Host "[WARN] sharex download may have failed" -ForegroundColor Yellow
+          }
