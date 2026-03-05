@@ -24,7 +24,7 @@ function Install-Scoop {
 function Add-ScoopProxyToProfile {
     Write-Host "Downloading and installing Scoop proxy function to Profile..."
 
-    $profileUrl = "$env:SCOOP_GH_PROXY/https://raw.githubusercontent.com/duzyn/scoop-proxy-wrapper/master/profile.ps1"
+    $profileUrl = "$env:SCOOP_GH_PROXY/https://raw.githubusercontent.com/duzyn/scoop-proxy-wrapper/main/profile.ps1"
 
     try {
         $proxyContent = Invoke-RestMethod -Uri $profileUrl -ErrorAction Stop
@@ -87,11 +87,11 @@ function Prepare-And-Install-Essentials {
     $GitManifestPath = "$Path\buckets\main\bucket\git.json"
 
     if (Test-Path -Path $7zipManifestPath) {
-        (Get-Content $7zipManifestPath) -replace 'https?://www\.7-zip\.org/a/7z(\d{2})(\d{2})', "$env:SCOOP_GH_PROXY/https://github.com/ip7z/7zip/releases/download/$1.$2/7z$1$2" | Set-Content $7zipManifestPath
+        (Get-Content $7zipManifestPath) -replace 'https?://www\.7-zip\.org/a/7z(\d{2})(\d{2})', ($env:SCOOP_GH_PROXY + '/https://github.com/ip7z/7zip/releases/download/$1.$2/7z$1$2') | Set-Content $7zipManifestPath
     }
 
     if (Test-Path -Path $GitManifestPath) {
-        (Get-Content $GitManifestPath) -replace '(https?://github\.com/.+/releases/.*download)', "$env:SCOOP_GH_PROXY/$1" | Set-Content $GitManifestPath
+        (Get-Content $GitManifestPath) -replace '(https?://github\.com/.+/releases/.*download)', ($env:SCOOP_GH_PROXY + '/$1') | Set-Content $GitManifestPath
     }
 
     Write-Host "Installing essential apps (7zip, git)..."
