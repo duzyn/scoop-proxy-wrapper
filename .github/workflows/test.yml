@@ -18,123 +18,49 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run install.ps1
+      - name: Run install.ps1 and test
         shell: pwsh
         run: |
-          Write-Host "=== Pre-check: Scoop status ===" -ForegroundColor Yellow
-          Get-Command scoop -ErrorAction SilentlyContinue | Format-List
-          Write-Host "SCOOP env: $env:SCOOP"
+          # Add Scoop to PATH
+          $scoopShims = "$env:USERPROFILE\scoop\shims"
+          if (Test-Path $scoopShims) {
+            $env:Path = "$scoopShims;$env:Path"
+          }
           
-          Write-Host "`n=== Running install.ps1 ===" -ForegroundColor Cyan
+          Write-Host "=== Running install.ps1 ===" -ForegroundColor Cyan
           .\install.ps1 2>&1
           
-          # Refresh environment for current step
-          $scoopPath = "$env:USERPROFILE\scoop"
-          $scoopShims = "$scoopPath\shims"
+          # Refresh PATH after install
           if (Test-Path $scoopShims) {
             $env:Path = "$scoopShims;$env:Path"
           }
-          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
           
-          Write-Host "`n=== Post-install: Scoop status ===" -ForegroundColor Yellow
-          Get-Command scoop -ErrorAction SilentlyContinue | Format-List
-          Write-Host "SCOOP_GH_PROXY: $env:SCOOP_GH_PROXY"
-          $env:Path -split ';' | Where-Object { $_ -match 'scoop' } | ForEach-Object { Write-Host "Scoop in PATH: $_" }
-
-      - name: Verify installation
-        shell: pwsh
-        run: |
-          # Set Scoop environment
-          $scoopPath = "$env:USERPROFILE\scoop"
-          $scoopShims = "$scoopPath\shims"
-          if (Test-Path $scoopShims) {
-            $env:Path = "$scoopShims;$env:Path"
-          }
-          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
-          
-          $scoopCmd = Get-Command scoop -ErrorAction SilentlyContinue
-          if (-not $scoopCmd) {
-            Write-Host "[ERROR] Scoop command not found!" -ForegroundColor Red
-            Write-Host "Checking Scoop environment variable: $env:SCOOP"
-            Write-Host "Checking if scoop installed somewhere..."
-            Get-ChildItem "$env:USERPROFILE\scoop" -ErrorAction SilentlyContinue | Format-Table Name
-            exit 1
-          }
-          
-          $scoopPath = scoop prefix
-          
-          Write-Host "=== Scoop Status ===" -ForegroundColor Cyan
-          Write-Host "Path: $scoopPath"
+          Write-Host "`n=== Scoop Status ===" -ForegroundColor Cyan
+          Write-Host "Path: $(scoop prefix)"
           Write-Host "Version: $(scoop version)"
           Write-Host "SCOOP_GH_PROXY: $env:SCOOP_GH_PROXY"
           
           Write-Host "`n=== Buckets ===" -ForegroundColor Cyan
           scoop bucket list
           
-          Write-Host "`n=== Apps ===" -ForegroundColor Cyan
-          scoop list | Select-Object -First 10
-
-      - name: Test app install
-        shell: pwsh
-        run: |
-          # Set Scoop environment
-          $scoopPath = "$env:USERPROFILE\scoop"
-          $scoopShims = "$scoopPath\shims"
-          if (Test-Path $scoopShims) {
-            $env:Path = "$scoopShims;$env:Path"
-          }
-          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
-          
-          Write-Host "Installing test apps..." -ForegroundColor Cyan
+          Write-Host "`n=== Install test apps ===" -ForegroundColor Cyan
           scoop install 7zip git aria2 2>&1
           
           $apps = @('7z', 'git', 'aria2c')
           foreach ($app in $apps) {
             $path = scoop which $app
             if ($path) {
-              Write-Host "[OK] $app installed: $path" -ForegroundColor Green
+              Write-Host "[OK] $app" -ForegroundColor Green
             } else {
               Write-Host "[WARN] $app not found" -ForegroundColor Yellow
             }
           }
-
-      - name: Test bucket add extras
-        shell: pwsh
-        run: |
-          # Set Scoop environment
-          $scoopPath = "$env:USERPROFILE\scoop"
-          $scoopShims = "$scoopPath\shims"
-          if (Test-Path $scoopShims) {
-            $env:Path = "$scoopShims;$env:Path"
-          }
-          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
           
-          Write-Host "Testing scoop bucket add extras..." -ForegroundColor Cyan
+          Write-Host "`n=== Bucket add test ===" -ForegroundColor Cyan
           scoop bucket add extras 2>&1
-          
-          $buckets = scoop bucket list
-          if ($buckets -match 'extras') {
-            Write-Host "[OK] extras bucket added" -ForegroundColor Green
-          } else {
-            Write-Host "[WARN] extras bucket not found" -ForegroundColor Yellow
+          if ((scoop bucket list) -match 'extras') {
+            Write-Host "[OK] extras bucket" -ForegroundColor Green
           }
-
-      - name: Test app download (sharex)
-        shell: pwsh
-        run: |
-          # Set Scoop environment
-          $scoopPath = "$env:USERPROFILE\scoop"
-          $scoopShims = "$scoopPath\shims"
-          if (Test-Path $scoopShims) {
-            $env:Path = "$scoopShims;$env:Path"
-          }
-          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
           
-          Write-Host "Testing scoop download sharex..." -ForegroundColor Cyan
+          Write-Host "`n=== Download test ===" -ForegroundColor Cyan
           scoop download sharex 2>&1
-          
-          if (Test-Path "$scoopPath\sharex\*") {
-            Write-Host "[OK] sharex downloaded successfully" -ForegroundColor Green
-          } else {
-            Write-Host "[WARN] sharex download may have failed" -ForegroundColor Yellow
-          }
