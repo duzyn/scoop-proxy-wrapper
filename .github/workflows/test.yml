@@ -9,6 +9,7 @@ on:
     paths:
       - 'install.ps1'
       - 'profile.ps1'
+  workflow_dispatch:
 
 jobs:
   test:
