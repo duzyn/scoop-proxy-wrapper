@@ -184,6 +184,24 @@ Describe 'script function tests' {
 
 5. **Null comparisons** - Use `-eq $null` or `$null -eq`, not `$variable -eq null`
 
+### Important: Execution Order in install.ps1
+
+The main execution order in `install.ps1` is critical:
+
+```powershell
+# --- Main Execution ---
+Install-Scoop                              # 1. Install Scoop
+Prepare-And-Install-Essentials -Path ...   # 2. Install git (needs git for profile.ps1)
+Add-ScoopProxyToProfile                    # 3. Load profile (uses git internally)
+```
+
+**Why this order matters:**
+- `profile.ps1` uses `git config` commands internally
+- If profile is loaded before git is installed, it will fail
+- Therefore, git must be installed BEFORE loading the profile
+
+**NEVER change this order!**
+
 ### Git Commit Messages
 
 - Use clear, concise commit messages

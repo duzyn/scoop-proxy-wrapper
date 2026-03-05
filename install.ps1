@@ -120,9 +120,9 @@ function Prepare-And-Install-Essentials {
 
 Install-Scoop
 
-Add-ScoopProxyToProfile
-
 Prepare-And-Install-Essentials -Path $ScoopPath
+
+Add-ScoopProxyToProfile
 
 Write-Host "Scoop was installed successfully!"
 
