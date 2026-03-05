@@ -28,6 +28,14 @@ jobs:
           Write-Host "`n=== Running install.ps1 ===" -ForegroundColor Cyan
           .\install.ps1 2>&1
           
+          # Refresh environment for current step
+          $scoopPath = "$env:USERPROFILE\scoop"
+          $scoopShims = "$scoopPath\shims"
+          if (Test-Path $scoopShims) {
+            $env:Path = "$scoopShims;$env:Path"
+          }
+          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
+          
           Write-Host "`n=== Post-install: Scoop status ===" -ForegroundColor Yellow
           Get-Command scoop -ErrorAction SilentlyContinue | Format-List
           Write-Host "SCOOP_GH_PROXY: $env:SCOOP_GH_PROXY"
@@ -36,6 +44,14 @@ jobs:
       - name: Verify installation
         shell: pwsh
         run: |
+          # Set Scoop environment
+          $scoopPath = "$env:USERPROFILE\scoop"
+          $scoopShims = "$scoopPath\shims"
+          if (Test-Path $scoopShims) {
+            $env:Path = "$scoopShims;$env:Path"
+          }
+          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
+          
           $scoopCmd = Get-Command scoop -ErrorAction SilentlyContinue
           if (-not $scoopCmd) {
             Write-Host "[ERROR] Scoop command not found!" -ForegroundColor Red
@@ -61,6 +77,14 @@ jobs:
       - name: Test app install
         shell: pwsh
         run: |
+          # Set Scoop environment
+          $scoopPath = "$env:USERPROFILE\scoop"
+          $scoopShims = "$scoopPath\shims"
+          if (Test-Path $scoopShims) {
+            $env:Path = "$scoopShims;$env:Path"
+          }
+          $env:SCOOP_GH_PROXY = "https://gh-proxy.com"
+          
           Write-Host "Installing test apps..." -ForegroundColor Cyan
           scoop install 7zip git aria2 2>&1
           
