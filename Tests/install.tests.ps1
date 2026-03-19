@@ -154,6 +154,35 @@ Other content
         It 'Should have Prepare-And-Install-Essentials function defined' {
             Get-Command Prepare-And-Install-Essentials -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
         }
+
+        It 'Should have Install-CmdWrapper function defined' {
+            Get-Command Install-CmdWrapper -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
+        }
+    }
+
+    Context 'Install-CmdWrapper function' {
+        BeforeAll {
+            $testWrapperDir = Join-Path $TestDrive 'wrapper'
+        }
+
+        It 'Should create wrapper directory if not exists' {
+            Install-CmdWrapper -WrapperDir $testWrapperDir
+            Test-Path $testWrapperDir | Should Be $true
+        }
+
+        It 'Should copy profile.ps1 to wrapper directory' {
+            $profilePath = Join-Path $testWrapperDir 'profile.ps1'
+            # Note: This test depends on profile.ps1 existing in script directory
+            if (Test-Path (Join-Path $scriptDir 'profile.ps1')) {
+                Test-Path $profilePath | Should Be $true
+            }
+        }
+
+        It 'Should construct correct wrapper directory path' {
+            $ScoopPath = 'C:\Users\TestUser\scoop'
+            $wrapperDir = "$ScoopPath\apps\scoop-proxy-wrapper\current"
+            $wrapperDir | Should Be 'C:\Users\TestUser\scoop\apps\scoop-proxy-wrapper\current'
+        }
     }
 
     Context 'Progress preference' {

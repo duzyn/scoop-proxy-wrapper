@@ -51,16 +51,23 @@ function scoop {
             function Proxify-Str($str) {
                 if ($str -is [string]) {
                     $newUrl = $null
+                    $proxyPrefix = $env:SCOOP_INTERNAL_PROXY
+
+                    # Skip if already proxified
+                    if ($str -match [regex]::Escape($proxyPrefix)) {
+                        return $str
+                    }
+
                     # 匹配 GitHub Releases / Raw / Archive
                     if ($str -match '^https://(github\.com|raw\.githubusercontent\.com)/') {
-                        $newUrl = $str -replace '^https://', "$($env:SCOOP_INTERNAL_PROXY)https://"
-                    } 
+                        $newUrl = $str -replace '^https://', ($proxyPrefix + 'https://')
+                    }
                     # 匹配 7-Zip 并重定向到 GitHub 镜像 (更稳健的正则)
                     elseif ($str -match 'https?://www\.7-zip\.org/a/7z(\d+)([^\s"]+)') {
                         $verMajor = $matches[1]; $verFull = $matches[2]
-                        $newUrl = "$($env:SCOOP_INTERNAL_PROXY)https://github.com/ip7z/7zip/releases/download/$($verMajor.Insert($verMajor.Length-2,'.'))$verFull/7z$verMajor$verFull"
+                        $newUrl = $proxyPrefix + "https://github.com/ip7z/7zip/releases/download/$($verMajor.Insert($verMajor.Length-2,'.'))$verFull/7z$verMajor$verFull"
                     }
-                    
+
                     if ($null -ne $newUrl) {
                         if ($env:SCOOP_INTERNAL_DEBUG -eq 'True') {
                             Write-Host "➔ [JSON Hook] Redirecting: $str" -ForegroundColor Cyan
@@ -138,4 +145,9 @@ function scoop {
         $env:SCOOP_INTERNAL_DEBUG = $null
         $env:SCOOP_HOOK_ACTIVE = $null
     }
+}
+
+# If this script is called directly (not sourced), invoke scoop with arguments
+if ($MyInvocation.InvocationName -ne '.') {
+    scoop @args
 }
